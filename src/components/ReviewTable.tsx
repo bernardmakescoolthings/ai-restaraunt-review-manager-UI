@@ -1,0 +1,349 @@
+import { Review, SortField, SortOrder } from '@/types/review';
+import { useState, useEffect } from 'react';
+
+interface Profile {
+  id: string;
+  name: string;
+  personality: string;
+}
+
+interface ReviewTableProps {
+  reviews: Review[];
+}
+
+const ITEMS_PER_PAGE = 10;
+
+// Format date consistently for both server and client
+function formatDate(dateStr: string): string {
+  const date = new Date(dateStr);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+export default function ReviewTable({ reviews: initialReviews }: ReviewTableProps) {
+  const [reviews, setReviews] = useState<Review[]>(initialReviews);
+  const [sortField, setSortField] = useState<SortField>('timestamp');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [generatingReplies, setGeneratingReplies] = useState<Set<string>>(new Set());
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<string>('');
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    // Load profiles from localStorage
+    const savedProfiles = localStorage.getItem('aiProfiles');
+    if (savedProfiles) {
+      setProfiles(JSON.parse(savedProfiles));
+      // Select the first profile by default if available
+      const parsedProfiles = JSON.parse(savedProfiles);
+      if (parsedProfiles.length > 0) {
+        setSelectedProfile(parsedProfiles[0].id);
+      }
+    }
+  }, []);
+
+  const fetchLatestData = async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const response = await fetch('/api/reviews/fetch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          business_url: localStorage.getItem('currentBusinessUrl')
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch reviews');
+      }
+
+      const data = await response.json();
+      setReviews(data.reviews);
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch reviews');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePageChange = async (newPage: number) => {
+    setCurrentPage(newPage);
+    await fetchLatestData();
+  };
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('desc');
+    }
+    setCurrentPage(1); // Reset to first page when sorting changes
+  };
+
+  const handleGenerateReply = async (messageId: string) => {
+    if (!selectedProfile) {
+      setError('Please select a profile first');
+      return;
+    }
+
+    setGeneratingReplies(prev => {
+      const newSet = new Set(prev);
+      newSet.add(messageId);
+      return newSet;
+    });
+    setError(null);
+
+    try {
+      const selectedProfileData = profiles.find(p => p.id === selectedProfile);
+      if (!selectedProfileData) {
+        throw new Error('Selected profile not found');
+      }
+
+      const response = await fetch('/api/reviews/generate-response', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message_id: messageId,
+          profile: selectedProfileData.personality
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate reply');
+      }
+
+      const data = await response.json();
+
+      // Update the reviews state with the new reply
+      const updatedReviews = reviews.map(review => {
+        if (review.id_review === messageId) {
+          return { ...review, reply: data.reply || data.response || 'No reply generated yet' };
+        }
+        return review;
+      });
+      setReviews(updatedReviews);
+
+      // Update localStorage with the new reviews
+      const currentBusinessUrl = localStorage.getItem('currentBusinessUrl');
+      if (currentBusinessUrl) {
+        // Get existing data from localStorage
+        const existingData = localStorage.getItem('businessData');
+        if (existingData) {
+          const parsedData = JSON.parse(existingData);
+          // Update only the reviews array
+          parsedData.reviews = updatedReviews;
+          // Save back to localStorage
+          localStorage.setItem('businessData', JSON.stringify(parsedData));
+        }
+      }
+    } catch (error) {
+      console.error('Error generating reply:', error);
+      setError(error instanceof Error ? error.message : 'Failed to generate reply');
+    } finally {
+      setGeneratingReplies(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(messageId);
+        return newSet;
+      });
+    }
+  };
+
+  const sortedReviews = [...reviews]
+    .filter(review => review.review_text) // Filter out reviews with no text
+    .sort((a, b) => {
+      const multiplier = sortOrder === 'asc' ? 1 : -1;
+      
+      switch (sortField) {
+        case 'rating':
+          return (a.rating - b.rating) * multiplier;
+        case 'timestamp':
+          return (new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime()) * multiplier;
+        case 'relative_date':
+          // Skip sorting by relative_date since it's not in the API response
+          return 0;
+        default:
+          return 0;
+      }
+    });
+
+  const totalPages = Math.ceil(sortedReviews.length / ITEMS_PER_PAGE);
+  const startIndex = (currentPage - 1) * ITEMS_PER_PAGE;
+  const paginatedReviews = sortedReviews.slice(startIndex, startIndex + ITEMS_PER_PAGE);
+
+  return (
+    <div className="space-y-4">
+      {error && (
+        <div className="bg-red-50 text-red-500 p-4 rounded-md">
+          {error}
+        </div>
+      )}
+      
+      {isLoading && (
+        <div className="flex justify-center items-center py-4">
+          <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        </div>
+      )}
+
+      <div className="flex items-center space-x-4 mb-4">
+        <label htmlFor="profile" className="text-sm font-medium text-gray-700">
+          Select Response Profile:
+        </label>
+        <select
+          id="profile"
+          value={selectedProfile}
+          onChange={(e) => setSelectedProfile(e.target.value)}
+          className="px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary focus:border-primary"
+        >
+          <option value="">Select a profile</option>
+          {profiles.map(profile => (
+            <option key={profile.id} value={profile.id}>
+              {profile.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="min-w-full bg-white shadow-md rounded-lg">
+          <thead className="bg-gray-50">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('rating')}>
+                Rating {sortField === 'rating' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Review Text
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Generated Reply
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                Actions
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider cursor-pointer hover:bg-gray-100"
+                  onClick={() => handleSort('timestamp')}>
+                Date {sortField === 'timestamp' && (sortOrder === 'asc' ? '↑' : '↓')}
+              </th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                User
+              </th>
+            </tr>
+          </thead>
+          <tbody className="bg-white divide-y divide-gray-200">
+            {paginatedReviews.map((review) => (
+              <tr key={review.id_review} className="hover:bg-gray-50">
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="flex items-center">
+                    <span className="text-yellow-500">★</span>
+                    <span className="ml-1">{review.rating}</span>
+                  </div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-sm text-gray-900">{review.review_text || 'No review text'}</div>
+                </td>
+                <td className="px-6 py-4">
+                  <div className="text-sm text-gray-900 min-h-[24px]">
+                    {review.reply || 'No reply generated yet'}
+                  </div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <button
+                    onClick={() => handleGenerateReply(review.id_review)}
+                    disabled={generatingReplies.has(review.id_review) || !selectedProfile}
+                    className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
+                  >
+                    {generatingReplies.has(review.id_review) ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Generating...
+                      </>
+                    ) : (
+                      'Generate Reply'
+                    )}
+                  </button>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{review.relative_date || ''}</div>
+                  <div className="text-xs text-gray-500">{formatDate(review.timestamp)}</div>
+                </td>
+                <td className="px-6 py-4 whitespace-nowrap">
+                  <div className="text-sm text-gray-900">{review.user_name}</div>
+                  <div className="text-xs text-gray-500">{review.n_review_user} reviews</div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Pagination Controls */}
+      <div className="flex items-center justify-between px-4 py-3 bg-white border-t border-gray-200 sm:px-6">
+        <div className="flex justify-between flex-1 sm:hidden">
+          <button
+            onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+            disabled={currentPage === 1 || isLoading}
+            className="relative inline-flex items-center px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Previous
+          </button>
+          <button
+            onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+            disabled={currentPage === totalPages || isLoading}
+            className="relative inline-flex items-center px-4 py-2 ml-3 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Next
+          </button>
+        </div>
+        <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm text-gray-700">
+              Showing <span className="font-medium">{startIndex + 1}</span> to{' '}
+              <span className="font-medium">{Math.min(startIndex + ITEMS_PER_PAGE, sortedReviews.length)}</span> of{' '}
+              <span className="font-medium">{sortedReviews.length}</span> results
+            </p>
+          </div>
+          <div>
+            <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+              <button
+                onClick={() => handlePageChange(Math.max(1, currentPage - 1))}
+                disabled={currentPage === 1 || isLoading}
+                className="relative inline-flex items-center justify-center w-8 h-8 rounded-l-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="sr-only">Previous</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
+                </svg>
+              </button>
+              <button
+                onClick={() => handlePageChange(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage === totalPages || isLoading}
+                className="relative inline-flex items-center justify-center w-8 h-8 rounded-r-md border border-gray-300 bg-white text-sm font-medium text-gray-500 hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <span className="sr-only">Next</span>
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                </svg>
+              </button>
+            </nav>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+} 

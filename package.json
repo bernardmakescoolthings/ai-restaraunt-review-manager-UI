@@ -1,0 +1,45 @@
+{
+  "name": "ai-restaraunt-review-manager-ui",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bernardmakescoolthings/ai-restaraunt-review-manager-UI.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/bernardmakescoolthings/ai-restaraunt-review-manager-UI/issues"
+  },
+  "homepage": "https://github.com/bernardmakescoolthings/ai-restaraunt-review-manager-UI#readme",
+  "description": "",
+  "dependencies": {
+    "@emotion/react": "^11.14.0",
+    "@emotion/styled": "^11.14.0",
+    "@mui/icons-material": "^7.0.1",
+    "@mui/material": "^7.0.1",
+    "@mui/x-data-grid": "^7.28.2",
+    "@types/uuid": "^10.0.0",
+    "next": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "react-router-dom": "^7.4.1",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "latest",
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.31",
+    "tailwindcss": "^3.3.0",
+    "typescript": "latest"
+  }
+}
