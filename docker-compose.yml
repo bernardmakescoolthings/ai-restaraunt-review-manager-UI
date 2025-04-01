@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - API_BASE_URL=http://localhost:8000
+    volumes:
+      - ./src:/app/src
+      - ./public:/app/public
+      - ./package.json:/app/package.json
+      - ./package-lock.json:/app/package-lock.json
+      - ./tsconfig.json:/app/tsconfig.json
+      - ./next.config.js:/app/next.config.js
+      - /app/node_modules
+      - /app/.next
+    user: "node"
+    command: npm run dev
+
+  frontend-prod:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_BASE_URL=http://localhost:8000
+      - API_BASE_URL=http://localhost:8000
+    command: npm run start
+
+    # DEVELOPMENT ENVIRONMENT
+    # environment:
+    #   - API_BASE_URL=http://host.docker.internal:8000
+    #   - NEXT_PUBLIC_API_BASE_URL=http://host.docker.internal:8000
+    # volumes:
+    #   - .:/app
+    #   - /app/node_modules
+    #   - /app/.next
+    # extra_hosts:
+    #   - "host.docker.internal:host-gateway"
+
+    # PRODUCTION ENVIRONMENT (uncomment these and comment out development settings)
+    # environment:
+    #   - API_BASE_URL=${API_BASE_URL}
+    #   - NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
+    # volumes:
+    #   - /app/node_modules
+    #   - /app/.next
+    #   - /app/public
+
+    restart: unless-stopped
+
+volumes:
+  next-cache: 

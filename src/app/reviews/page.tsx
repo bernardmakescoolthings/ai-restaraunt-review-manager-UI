@@ -11,6 +11,15 @@ interface Metadata {
   business_url: string;
 }
 
+interface BusinessData {
+  business: {
+    name: string | null;
+    url: string;
+    total_reviews: number;
+  };
+  reviews: Review[];
+}
+
 export default function ReviewsPage() {
   const [reviews, setReviews] = useState<Review[]>([]);
   const [metadata, setMetadata] = useState<Metadata | null>(null);
@@ -43,6 +52,16 @@ export default function ReviewsPage() {
     loadData();
   }, []);
 
+  const handleCopyBusinessUrl = () => {
+    const businessUsername = localStorage.getItem('currentBusinessUsername');
+    if (businessUsername) {
+      navigator.clipboard.writeText(businessUsername);
+      alert('Business username copied to clipboard!');
+    } else {
+      alert('No business username found. Please load a business first.');
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -73,18 +92,10 @@ export default function ReviewsPage() {
         </div>
         <div className="space-x-4">
           <button
-            onClick={() => {
-              const businessUrl = localStorage.getItem('currentBusinessUrl');
-              if (businessUrl) {
-                navigator.clipboard.writeText(businessUrl);
-                alert('Business URL copied to clipboard!');
-              } else {
-                alert('No business URL found. Please load a business first.');
-              }
-            }}
-            className="bg-primary text-white py-2 px-4 rounded-md hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
+            onClick={handleCopyBusinessUrl}
+            className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary"
           >
-            Get Business URL
+            Get Business Username
           </button>
           <Link 
             href="/profiles"

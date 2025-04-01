@@ -2,17 +2,21 @@ import { NextResponse } from 'next/server';
 
 export async function POST(request: Request) {
   try {
-    const { profile, message_id } = await request.json();
-    console.log('Request body:', { profile, message_id });
+    const body = await request.json();
+    console.log('Request body:', body);
+
+    const { profile, message_id } = body;
 
     if (!profile || !message_id) {
+      console.error('Missing required fields:', { profile, message_id });
       return NextResponse.json(
-        { error: 'Profile and message_id are required' },
+        { error: 'Missing required fields' },
         { status: 400 }
       );
     }
 
-    if (!process.env.NEXT_PUBLIC_API_BASE_URL) {
+    const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL;
+    if (!API_BASE_URL) {
       console.error('API_BASE_URL is not configured');
       return NextResponse.json(
         { error: 'API configuration is missing' },
@@ -20,41 +24,42 @@ export async function POST(request: Request) {
       );
     }
 
-    const apiUrl = `${process.env.NEXT_PUBLIC_API_BASE_URL}/message/get_response`;
+    const apiUrl = `${API_BASE_URL}/message/get_response`;
     console.log('Making request to:', apiUrl);
-    console.log('Request payload:', JSON.stringify({ profile, message_id }, null, 2));
+
+    const payload = {
+      profile_id: profile,
+      message_id: message_id
+    };
+    console.log('Request payload:', payload);
 
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ profile, message_id }),
+      body: JSON.stringify(payload),
     });
 
     console.log('Response status:', response.status);
-    console.log('Response headers:', Object.fromEntries(response.headers.entries()));
-    
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('API Error:', errorText);
-      throw new Error(`Failed to generate response: ${response.status} ${errorText}`);
+      console.error('API error response:', errorText);
+      return NextResponse.json(
+        { error: 'Failed to generate response' },
+        { status: response.status }
+      );
     }
 
     const data = await response.json();
-    console.log('Raw API response:', JSON.stringify(data, null, 2));
+    console.log('API response:', data);
 
-    // Ensure we're returning the response in a consistent format
-    const formattedResponse = {
-      reply: data.reply || data.response || 'No reply generated yet'
-    };
-    console.log('Formatted response:', JSON.stringify(formattedResponse, null, 2));
-
-    return NextResponse.json(formattedResponse);
+    return NextResponse.json(data);
   } catch (error) {
-    console.error('Error generating response:', error);
+    console.error('Error in generate-response route:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to generate response' },
+      { error: 'Internal server error' },
       { status: 500 }
     );
   }

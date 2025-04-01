@@ -3,12 +3,12 @@ import { NextResponse } from 'next/server';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { business_url } = body;
+    const { business_username } = body;
 
-    if (!business_url) {
-      console.error('Missing business_url in request body');
+    if (!business_username) {
+      console.error('Missing business_username in request body');
       return NextResponse.json(
-        { error: 'Business URL is required' },
+        { error: 'Business username is required' },
         { status: 400 }
       );
     }
@@ -27,7 +27,7 @@ export async function POST(request: Request) {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ business_url }),
+      body: JSON.stringify({ business_username }),
     });
 
     if (!response.ok) {
