@@ -29,16 +29,78 @@ export default function ReviewTable({ reviews: initialReviews }: ReviewTableProp
 
   useEffect(() => {
     // Load profiles from localStorage
-    const savedProfiles = localStorage.getItem('profiles');
-    if (savedProfiles) {
-      const parsedProfiles = JSON.parse(savedProfiles);
-      setProfiles(parsedProfiles);
-      // Select the first profile by default if available
-      if (parsedProfiles.length > 0) {
-        setSelectedProfile(parsedProfiles[0].id);
+    const loadProfiles = () => {
+      const savedProfiles = localStorage.getItem('profiles');
+      if (savedProfiles) {
+        const parsedProfiles = JSON.parse(savedProfiles);
+        setProfiles(parsedProfiles);
+        // Select the first profile by default if available and no profile is selected
+        if (parsedProfiles.length > 0 && !selectedProfile) {
+          setSelectedProfile(parsedProfiles[0].id);
+        }
       }
+    };
+
+    // Load profiles initially
+    loadProfiles();
+
+    // Add focus event listener to refresh profiles when the window regains focus
+    const handleFocus = () => {
+      loadProfiles();
+      // Also fetch latest reviews when window regains focus
+      fetchLatestReviews();
+    };
+
+    window.addEventListener('focus', handleFocus);
+
+    // Cleanup event listener
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [selectedProfile]); // Add selectedProfile as a dependency
+
+  // Add new function to fetch latest reviews
+  const fetchLatestReviews = async () => {
+    try {
+      const currentBusinessUsername = localStorage.getItem('currentBusinessUsername');
+      if (!currentBusinessUsername) {
+        throw new Error('No business username found');
+      }
+
+      const response = await fetch('/api/reviews/fetch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          business_username: currentBusinessUsername
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to fetch reviews');
+      }
+
+      const data = await response.json();
+      if (!data.reviews || !Array.isArray(data.reviews)) {
+        throw new Error('Invalid response format');
+      }
+
+      setReviews(data.reviews);
+      setError(null); // Clear any previous errors
+    } catch (error) {
+      console.error('Error fetching reviews:', error);
+      setError(error instanceof Error ? error.message : 'Failed to fetch latest reviews');
+      // Keep the existing reviews if there's an error
+      // setReviews([]); // Commented out to prevent clearing existing reviews on error
     }
-  }, []);
+  };
+
+  // Add new useEffect to fetch reviews on mount
+  useEffect(() => {
+    fetchLatestReviews();
+  }, []); // Empty dependency array means this runs once on mount
 
   const handleSort = (field: SortField) => {
     if (sortField === field) {
@@ -212,23 +274,21 @@ export default function ReviewTable({ reviews: initialReviews }: ReviewTableProp
                       </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
-                      <button
-                        onClick={() => handleGenerateReply(review.id_review)}
-                        disabled={generatingReplies.has(review.id_review) || !selectedProfile}
-                        className="inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
-                      >
-                        {generatingReplies.has(review.id_review) ? (
-                          <>
-                            <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                            </svg>
-                            Generating...
-                          </>
-                        ) : (
-                          'Generate Reply'
-                        )}
-                      </button>
+                      <div className="flex flex-col space-y-2">
+                        <button
+                          onClick={() => handleGenerateReply(review.id_review)}
+                          disabled={generatingReplies.has(review.id_review)}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-primary hover:bg-primary-dark focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          {generatingReplies.has(review.id_review) ? 'Generating...' : 'Generate Reply'}
+                        </button>
+                        <button
+                          disabled={true}
+                          className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-gray-400 hover:bg-gray-500 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Post Reply
+                        </button>
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="text-sm text-gray-900">{review.relative_date}</div>

@@ -24,14 +24,21 @@ export default function ProfilesPage() {
       }
       const data = await response.json();
       setProfiles(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to load profiles');
+      localStorage.setItem('profiles', JSON.stringify(data));
+    } catch (error) {
+      console.error('Error loading profiles:', error);
+      setError('Failed to load profiles');
     } finally {
       setIsLoading(false);
     }
   };
 
   const handleCreateProfile = async () => {
+    if (!newProfile.profile_name.trim()) {
+      setError('Profile name cannot be empty');
+      return;
+    }
+
     try {
       const response = await fetch('/api/profiles/add_profiles', {
         method: 'POST',
@@ -40,24 +47,34 @@ export default function ProfilesPage() {
         },
         body: JSON.stringify({
           profile_name: newProfile.profile_name,
+          profile_text_base: newProfile.profile_text_addon,
           profile_text_addon: newProfile.profile_text_addon,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Failed to create profile');
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create profile');
       }
 
-      await loadProfiles();
-      setIsCreating(false);
       setNewProfile({ profile_name: '', profile_text_addon: '' });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create profile');
+      await loadProfiles();
+    } catch (error) {
+      console.error('Error creating profile:', error);
+      setError('Failed to create profile');
     }
   };
 
   const handleUpdateProfile = async () => {
-    if (!editingProfile) return;
+    if (!editingProfile) {
+      setError('No profile selected for editing');
+      return;
+    }
+
+    if (!editingProfile.profile_name.trim()) {
+      setError('Profile name cannot be empty');
+      return;
+    }
 
     try {
       const response = await fetch(`/api/profiles/${editingProfile.id}`, {
@@ -75,15 +92,18 @@ export default function ProfilesPage() {
         throw new Error('Failed to update profile');
       }
 
-      await loadProfiles();
       setEditingProfile(null);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update profile');
+      await loadProfiles();
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      setError('Failed to update profile');
     }
   };
 
   const handleDeleteProfile = async (id: number) => {
-    if (!confirm('Are you sure you want to delete this profile?')) return;
+    if (!confirm('Are you sure you want to delete this profile?')) {
+      return;
+    }
 
     try {
       const response = await fetch(`/api/profiles/${id}`, {
@@ -95,8 +115,9 @@ export default function ProfilesPage() {
       }
 
       await loadProfiles();
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to delete profile');
+    } catch (error) {
+      console.error('Error deleting profile:', error);
+      setError('Failed to delete profile');
     }
   };
 
